@@ -46,8 +46,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_PERSON_ID_EXTERNAL = "userId";
 	private static final String ATTR_PERSON_NAV = "personNav";
 	private static final String ATTR_EMPINFO = "empInfo";
-	private static final String ATTR_FIRST_NAME = "firstName";
-	private static final String ATTR_LAST_NAME = "lastName";
 	private static final String ATTR_DATE_OF_BIRTH = "dateOfBirth";
 	private static final String ATTR_MANAGER = "manager";
 	private static final String ATTR_MANAGER_ID = "managerId";
@@ -57,7 +55,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 
 
 	private static final String ATTR_DESCRIPTION = "cost_center_description";
-	private static final String ATTR_TITLE = "title";
 	private static final String ATTR_JOB_CODE = "jobCode";
 	private static final String ATTR_DIVISION = "division";
 	private static final String ATTR_LOCATION = "location";
@@ -75,10 +72,22 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_TYPE = "type";
 	private static final String ATTR_IS_PRIMARY = "isPrimary";
 	private static final String ATTR_DEPARTMENT = "department";
+	private static final String ATTR_NATIONAL_ID_NAV = "nationalIdNav";
+	private static final String ATTR_NATIONAL_ID = "nationalId";
+	private static final String ATTR_EMPLOYMENTNAV = "employmentNav";
+	private static final String ATTR_CUIL = "cuil";
+	private static final String ATTR_PERSONAL_INFO_NAV = "personalInfoNav";
+	private static final String ATTR_FIRST_NAME = "firstName";
+	private static final String ATTR_LAST_NAME = "lastName";
+	private static final String ATTR_BUSINESS_UNIT = "businessUnit";
+	private static final String ATTR_TITLE = "title";
+	private static final String ATTR_CUSTOM_STRING_NAV = "customString17Nav";
+	private static final String ATTR_CUSTOM_STRING_NAV_TITLE_DESC = "description";
 
 
 	private SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 	final Pattern NUMBER_MATCHER = Pattern.compile("(-?\\d+)");
+	final Pattern DNI_MATCHER = Pattern.compile("\\d\\d-?(\\d+)-?\\d");
 	private HttpUtils httpUtils;
 	public static String accessToken;
 	public static Long expiresAt;
@@ -122,6 +131,9 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_PHONE_NUMBER).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_INTERNAL_PHONE_NUMBER).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DEPARTMENT).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NATIONAL_ID).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_CUIL).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_BUSINESS_UNIT).build());
 
 		schemaBuilder.defineObjectClass(accountBuilder.build());
 	}
@@ -287,6 +299,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	}
 	
 	private void queryAccounts(SuccessFactorsFilter query, ResultsHandler handler, OperationOptions options){
+		System.out.println("QUERY: "+query);
 		String queryURL = this.getConfiguration().getServiceAddress();
 		queryURL = queryURL + this.getConfiguration().getAccountsQuery();
 
@@ -322,6 +335,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		}
 
 		queryURL = queryURL + "&fromDate=" + getCurrentDate() + "&toDate=9999-12-31";
+		System.out.println("queryURL: "+queryURL);
 
 		// Iterate over a loop because results can be paginated
 		while(StringUtil.isNotBlank(queryURL)) {
@@ -340,6 +354,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			logger.info("Query after querying, before next apply: {0}", queryURL);
 			queryURL = root.hasNonNull(ATTR_NEXT) ? root.get(ATTR_NEXT).asText() : null;
 			logger.info("Query after querying, with next apply: {0}", queryURL);
+		System.out.println("queryURL: "+queryURL);
 		}
 	}
 
@@ -408,7 +423,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		JsonNode results = jobInfoNav.get(ATTR_RESULTS);
 		if (results.isArray() && results.size() > 0) {
 			JsonNode firstResult = results.get(0);
-			getIfExists(firstResult, ATTR_MANAGER_ID, builder, ATTR_MANAGER);
+			//getIfExists(firstResult, ATTR_MANAGER_ID, builder, ATTR_MANAGER);
 			getIfExists(firstResult, ATTR_COMPANY, builder);
 			getIfExists(firstResult, ATTR_EVENT_REASON, builder);
 		}
@@ -439,8 +454,18 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	 * @return
 	 */
 	private void getAttrsFromPersonNav(ConnectorObjectBuilder builder, JsonNode personNav) {
-		logger.info("Getting user attrs from json attribute personNav.");
+		System.out.println("Getting user attrs from json attribute personNav.");
 
+		if (personNav.hasNonNull(ATTR_NATIONAL_ID_NAV)) {
+		System.out.println("DENTRO PERSON NAV NATIONAL ID NAV");
+			JsonNode nationalIdNav = personNav.get(ATTR_NATIONAL_ID_NAV);
+			getAttrsFromNationalIdNav(builder, nationalIdNav);
+		}
+		if (personNav.hasNonNull(ATTR_PERSONAL_INFO_NAV)) {
+			System.out.println("DENTRO PERSON NAV PERSONAL INFO NAV");
+			JsonNode personalInfoNav = personNav.get(ATTR_PERSONAL_INFO_NAV);
+			getAttrsFromPersonalInfoNav(builder, personalInfoNav);
+		}
 		if (personNav.hasNonNull(ATTR_PHONE_NAV)) {
 			getAttrsFromPhoneNav(builder, personNav.get(ATTR_PHONE_NAV));
 		}
@@ -475,6 +500,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	 * @throws IOException
 	 */
 	private ConnectorObject convertUserToConnectorObject(JsonNode user)  {
+		System.out.println("DENTRO CONVERTUSERTOCONNECTOROBJECT USER: "+user);
 		logger.info("Converting json to connector object. User id: {0}", user.get(ATTR_PERSON_ID_EXTERNAL));
 		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
 
@@ -483,18 +509,20 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		builder.setName(uid);
 		
 		getIfExists(user, ATTR_PERSON_ID_EXTERNAL, builder, ATTR_USER_ID);
-		getIfExists(user, ATTR_FIRST_NAME, builder);
-		getIfExists(user, ATTR_LAST_NAME, builder);
 		getDateIfExists(user, ATTR_DATE_OF_BIRTH, builder);
 		getDateIfExists(user, ATTR_HIRE_DATE, builder);
-		getIfExists(user, ATTR_TITLE, builder);
 		getIfExists(user, ATTR_USERNAME, builder);
 		getIfExists(user, ATTR_EMAIL, builder, ATTR_EMAIL_ADDRESS);
+		//getIfExists(user, ATTR_TITLE, builder); //Lo debería tener en otro método
+		//getIfExists(user, ATTR_FIRST_NAME, builder); //Lo tengo en otro metodo
+		//getIfExists(user, ATTR_LAST_NAME, builder); //Lo tengo en otro metodo
+		getIfExists(user, ATTR_MANAGER_ID, builder, ATTR_MANAGER);
+		getIfExists(user, ATTR_BUSINESS_UNIT, builder);
 
-		if (user.hasNonNull(ATTR_EMPINFO)) {
+		/*if (user.hasNonNull(ATTR_EMPINFO)) {
 			JsonNode employmentNav = user.get(ATTR_EMPINFO);
 			getAttrsFromEmpInfo(builder, employmentNav);
-		}
+		}*/
 
 		if(user.hasNonNull(ATTR_DIVISION)) {
 			JsonNode division = user.get(ATTR_DIVISION);
@@ -507,12 +535,23 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		}
 
 		if(user.hasNonNull(ATTR_LOCATION)) {
+		System.out.println("DENTRO USER HAS NO NULL LOCATION");
 			JsonNode location = user.get(ATTR_LOCATION);
 			addAttr(builder, ATTR_LOCATION, getValueForAttribute(location.asText()));
 		}
 		if(user.hasNonNull(ATTR_DEPARTMENT)) {
 			JsonNode department = user.get(ATTR_DEPARTMENT);
 			addAttr(builder, ATTR_DEPARTMENT, extractLastString(department.asText()));
+		}
+		if (user.hasNonNull(ATTR_EMPLOYMENTNAV)) {
+		System.out.println("DENTRO USER HAS NO NULL EMPLOYMENTNAV");
+			JsonNode employmentNav = user.get(ATTR_EMPLOYMENTNAV);
+			getAttrsFromEmploymentNav(builder, employmentNav);
+		}
+		if (user.hasNonNull(ATTR_CUSTOM_STRING_NAV)) {
+		System.out.println("DENTRO USER HAS NO NULL CUSTOMSTRING17NAV");
+			JsonNode custStringNav = user.get(ATTR_CUSTOM_STRING_NAV);
+			getAttrsFromCustomStringNav(builder, custStringNav);
 		}
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(ATTR_PERSON_ID_EXTERNAL), connectorObject);
@@ -652,5 +691,111 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 		return currentDate.format(formatter);
 	}
-}
 
+	/**
+	 * Extracts DNI from nationalIdNav if exists. Otherwise its calculated from cuil.
+	 * @param builder
+	 * @param nationalIdNav
+	 * @return
+	 */
+	private void getAttrsFromNationalIdNav(ConnectorObjectBuilder builder, JsonNode nationalIdNav) {
+	System.out.println("Getting attrs from json attribute nationalIdNav.");
+	if (!nationalIdNav.hasNonNull(ATTR_RESULTS)) {
+		return;
+	}
+
+	JsonNode results = nationalIdNav.get(ATTR_RESULTS);
+	if (results.isArray() && results.size() > 0) {
+		String nationalId = null;
+		String cuil = null;
+
+		for (JsonNode r : results) {
+			if (r.hasNonNull(ATTR_METADATA) && r.hasNonNull(ATTR_NATIONAL_ID)) {
+				JsonNode metadata = r.get(ATTR_METADATA);
+				String value = r.get(ATTR_NATIONAL_ID).asText();
+
+				if (metadata.hasNonNull(ATTR_URI)) {
+					String uri = metadata.get(ATTR_URI).toString();
+
+					if (uri.contains("cardType='DNI'")) {
+						System.out.println("Getting DNI.");
+						nationalId = value;
+					} else if (uri.contains("cardType='cuil'")) {
+						System.out.println("Getting CUIL.");
+						cuil = value;
+
+						// También podemos usar CUIL para extraer DNI si aún no se obtuvo
+						if (nationalId == null) {
+							System.out.println("Getting DNI from CUIL.");
+							nationalId = extractDNIFromCUIL(value);
+						}
+					}
+				}
+			}
+		}
+
+		// Agregamos atributos al builder
+		addAttr(builder, ATTR_NATIONAL_ID, nationalId);
+		addAttr(builder, ATTR_CUIL, cuil);
+	}
+}
+	
+	private String extractDNIFromCUIL(String cuil) {
+		Matcher m = DNI_MATCHER.matcher(cuil);
+		if(m.find()) {
+			logger.ok("extractDNIFromCUIL: Value found: {0}", m.group(1));
+			return m.group(1);
+		}
+		return "";
+	}
+	
+	/**
+	 * Extracts user attributes from employmentNav object.
+	 * @param builder
+	 * @param employmentNav
+	 * @return
+	 */
+	private void getAttrsFromEmploymentNav(ConnectorObjectBuilder builder, JsonNode employmentNav) {
+		logger.info("Getting user attrs from json attribute employmentNav");
+		getDateIfExists(employmentNav, ATTR_END_DATE, builder);
+		
+			if (employmentNav.hasNonNull(ATTR_PERSON_NAV)) {
+				JsonNode personNav = employmentNav.get(ATTR_PERSON_NAV);
+				getAttrsFromPersonNav(builder, personNav);
+			}
+	}
+	
+	/**
+	 * Extracts firstName and lastName from personalInfoNav object.
+	 * @param builder
+	 * @param personalInfoNav
+	 * @return
+	 */
+	 private void getAttrsFromPersonalInfoNav(ConnectorObjectBuilder builder, JsonNode personalInfoNav) {
+		logger.info("Getting user attrs from json attribute personalInfoNav.");
+
+		if (!personalInfoNav.hasNonNull(ATTR_RESULTS)) {return;}
+
+		JsonNode results = personalInfoNav.get(ATTR_RESULTS);
+		if (results.isArray() && results.size() > 0) {
+			JsonNode firstResult = results.get(0);
+			getIfExists(firstResult, ATTR_FIRST_NAME, builder);
+			getIfExists(firstResult, ATTR_LAST_NAME, builder);
+		}
+	}
+	
+	/**
+	 * Extracts user attributes from customString17Nav object.
+	 * @param builder
+	 * @param customString17Nav
+	 * @return
+	 */
+	private void getAttrsFromCustomStringNav(ConnectorObjectBuilder builder, JsonNode customString17Nav) {
+		
+			if (customString17Nav.hasNonNull(ATTR_CUSTOM_STRING_NAV_TITLE_DESC)) {
+				JsonNode customString17NavDesc = customString17Nav.get(ATTR_CUSTOM_STRING_NAV_TITLE_DESC);
+				addAttr(builder, ATTR_TITLE, customString17NavDesc.asText());
+			}
+	}
+	
+}
