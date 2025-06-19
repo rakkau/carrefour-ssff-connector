@@ -55,6 +55,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 
 
 	private static final String ATTR_DESCRIPTION = "cost_center_description";
+	private static final String ATTR_DEPARTMENT = "department";
 	private static final String ATTR_JOB_CODE = "jobCode";
 	private static final String ATTR_DIVISION = "division";
 	private static final String ATTR_LOCATION = "location";
@@ -71,7 +72,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_URI = "uri";
 	private static final String ATTR_TYPE = "type";
 	private static final String ATTR_IS_PRIMARY = "isPrimary";
-	private static final String ATTR_DEPARTMENT = "department";
 	private static final String ATTR_NATIONAL_ID_NAV = "nationalIdNav";
 	private static final String ATTR_NATIONAL_ID = "nationalId";
 	private static final String ATTR_EMPLOYMENTNAV = "employmentNav";
@@ -83,7 +83,19 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_TITLE = "title";
 	private static final String ATTR_CUSTOM_STRING_NAV = "customString17Nav";
 	private static final String ATTR_CUSTOM_STRING_NAV_TITLE_DESC = "description";
+	private static final String ATTR_DEPARTMENTNAV = "departmentNav";
+	private static final String ATTR_DEPARTMENTNAV_DESC = "description";
 
+	// Orgs Attributes
+	private static final String ATTR_EXTERNAL_CODE = "externalCode";
+	private static final String ATTR_PARENT = "parent";
+	private static final String ATTR_NAME = "name";
+	private static final String ATTR_STATUS = "status";
+
+	// Custom Object Classes
+	private static final String BUSINESSUNIT_OBJECT_CLASS = ObjectClassUtil.createSpecialName("BUSINESSUNIT");
+	private static final String DIVISION_OBJECT_CLASS = ObjectClassUtil.createSpecialName("DIVISION");
+	private static final String DEPARTMENT_OBJECT_CLASS = ObjectClassUtil.createSpecialName("DEPARTMENT");
 
 	private SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 	final Pattern NUMBER_MATCHER = Pattern.compile("(-?\\d+)");
@@ -105,7 +117,10 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		logger.info("Processing Success Factors schemas");
 		SchemaBuilder schemaBuilder = new SchemaBuilder(SuccessFactorsConnector.class);
 		accountSchema(schemaBuilder);
-		logger.info("Exiting schema builder");
+		businessUnitSchema(schemaBuilder);
+		divisionSchema(schemaBuilder);
+		departmentSchema(schemaBuilder);
+		System.out.println("Exiting schema builder");
 		return schemaBuilder.build();
 	}
 
@@ -137,6 +152,39 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 
 		schemaBuilder.defineObjectClass(accountBuilder.build());
 	}
+	
+	private void businessUnitSchema(SchemaBuilder schemaBuilder) {
+		System.out.println("DENTRO businessUnitSchema");
+		ObjectClassInfoBuilder businessUnitBuilder = new ObjectClassInfoBuilder();
+		businessUnitBuilder.setType(BUSINESSUNIT_OBJECT_CLASS);
+		businessUnitBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_EXTERNAL_CODE).build());
+		businessUnitBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_PARENT).build());
+		businessUnitBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NAME).build());
+		businessUnitBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_STATUS).build());
+
+		schemaBuilder.defineObjectClass(businessUnitBuilder.build());
+	}
+	
+	private void divisionSchema(SchemaBuilder schemaBuilder) {
+		System.out.println("DENTRO divisionSchema");
+		ObjectClassInfoBuilder divisionBuilder = new ObjectClassInfoBuilder();
+		divisionBuilder.setType(DIVISION_OBJECT_CLASS);
+		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_EXTERNAL_CODE).build());
+		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_PARENT).build());
+		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NAME).build());
+		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_STATUS).build());
+		schemaBuilder.defineObjectClass(divisionBuilder.build());
+	}
+	
+	private void departmentSchema(SchemaBuilder schemaBuilder) {
+		ObjectClassInfoBuilder departmentBuilder = new ObjectClassInfoBuilder();
+		departmentBuilder.setType(DEPARTMENT_OBJECT_CLASS);
+		departmentBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_EXTERNAL_CODE).build());
+		departmentBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_PARENT).build());
+		departmentBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NAME).build());
+		departmentBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_STATUS).build());
+		schemaBuilder.defineObjectClass(departmentBuilder.build());
+	}
 
 	@Override
 	public FilterTranslator createFilterTranslator(ObjectClass objectClass, OperationOptions operationOptions) {
@@ -148,6 +196,15 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		logger.info("ExecuteQuery on {0}, query: {1}, page size: {2}, page offset: {3}", objectClass, query, options.getPageSize(), options.getPagedResultsOffset());
 		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
 			queryAccounts(query, resultsHandler, options);
+		} else if (objectClass.is(BUSINESSUNIT_OBJECT_CLASS)) {
+			System.out.println("DENTRO executeQuery BUSINESSUNIT_OBJECT_CLASS");
+			queryBusinessUnits(query, resultsHandler, options);
+		} else if (objectClass.is(DIVISION_OBJECT_CLASS)) {
+			System.out.println("DENTRO executeQuery DIVISION_OBJECT_CLASS");
+			queryDivisions(query, resultsHandler, options);
+		} else if (objectClass.is(DEPARTMENT_OBJECT_CLASS)) {
+			System.out.println("DENTRO executeQuery DEPARTMENT_OBJECT_CLASS");
+			queryDepartments(query, resultsHandler, options);
 		} else {
 			throw new ConnectorException("ObjectClass " + objectClass.getObjectClassValue() + " unknown on executeQuery");
 		}
@@ -358,6 +415,197 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		}
 	}
 
+	private void queryBusinessUnits(SuccessFactorsFilter query, ResultsHandler handler, OperationOptions options) {
+
+		// 0) Path base
+		String queryURL = this.getConfiguration().getServiceAddress() + this.getConfiguration().getBusinessUnitQuery();
+
+		// 1) Filtro fijo configurado en el recurso
+		List<String> filters = new ArrayList<>();
+		if (StringUtil.isNotBlank(this.getConfiguration().getBusinessUnitFilter())) {
+			filters.add(this.getConfiguration().getBusinessUnitFilter());
+			System.out.println("Adding configured BU filter: " + filters);
+		}
+
+		// 2) Condiciones dinámicas (uid / name)
+		List<String> conditions = new ArrayList<>();
+		if (query != null) {
+			if (StringUtil.isNotBlank(query.byUid)) {
+				conditions.add(ATTR_EXTERNAL_CODE + " eq '" + query.byUid + "'");
+			}
+			if (StringUtil.isNotBlank(query.byName)) {
+				conditions.add("tolower(" + ATTR_NAME + ") like '%" + query.byName.toLowerCase() + "%'");
+			}
+		}
+
+		// 3) Construir / concatenar $filter
+		if (!conditions.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", conditions));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+			System.out.println("Adding dynamic conditions: " + conditions);
+		}
+
+		if (!filters.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", filters));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+			System.out.println("Final queryURL with static filters: " + queryURL);
+		}
+
+		// 4) (Opcional) ventana temporal — solo si aplica a BU
+		// queryURL += "&fromDate=" + getCurrentDate() + "&toDate=9999-12-31";
+
+		// 5) Bucle de paginación
+		while (StringUtil.isNotBlank(queryURL)) {
+			System.out.println("Querying businessUnits at: " + queryURL);
+			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
+			JsonNode root = response.get("d");
+			JsonNode results  = root.get("results");
+
+			System.out.println("Business Unit Query Response: " + response.toString());
+			System.out.println("Found " + results.size() + " businessUnits");
+
+			for (JsonNode bu : results) {
+				ConnectorObject co = convertBusinessUnitToConnectorObject(bu);
+				handler.handle(co);
+			}
+
+			queryURL = root.hasNonNull(ATTR_NEXT) ? root.get(ATTR_NEXT).asText() : null;
+		}
+	}
+
+	
+	private void queryDivisions(SuccessFactorsFilter query, ResultsHandler handler, OperationOptions options) {
+
+		// 0) Path base
+		String queryURL = this.getConfiguration().getServiceAddress() + this.getConfiguration().getDivisionsQuery();
+
+		// 1) Filtro fijo configurado en el recurso
+		List<String> filters = new ArrayList<>();
+		if (StringUtil.isNotBlank(this.getConfiguration().getDivisionFilter())) {
+			filters.add(this.getConfiguration().getDivisionFilter());
+			System.out.println("Adding configured Division filter: " + filters);
+		}
+
+		// 2) Condiciones dinámicas (uid / name)
+		List<String> conditions = new ArrayList<>();
+		if (query != null) {
+			if (StringUtil.isNotBlank(query.byUid)) {
+				conditions.add(ATTR_EXTERNAL_CODE + " eq '" + query.byUid + "'");
+			}
+			if (StringUtil.isNotBlank(query.byName)) {
+				conditions.add("tolower(" + ATTR_NAME + ") like '%" + query.byName.toLowerCase() + "%'");
+			}
+		}
+
+		// 3) Construir / concatenar $filter
+		if (!conditions.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", conditions));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+			System.out.println("Adding dynamic Division conditions: " + conditions);
+		}
+
+		if (!filters.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", filters));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+			System.out.println("Final Division queryURL with static filters: " + queryURL);
+		}
+
+		// 4) Bucle paginado
+		while (StringUtil.isNotBlank(queryURL)) {
+			System.out.println("Querying divisions at: " + queryURL);
+			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
+			JsonNode root = response.get("d");
+			JsonNode results  = root.get("results");
+
+			System.out.println("Division Query Response: " + response.toString());
+			System.out.println("Found " + results.size() + " divisions");
+
+			for (JsonNode div : results) {
+				ConnectorObject co = convertDivisionToConnectorObject(div);
+				handler.handle(co);
+			}
+			queryURL = root.hasNonNull(ATTR_NEXT) ? root.get(ATTR_NEXT).asText() : null;
+		}
+	}
+	
+	private void queryDepartments(SuccessFactorsFilter query, ResultsHandler handler, OperationOptions options) {
+
+		// 0) Path base
+		String queryURL = this.getConfiguration().getServiceAddress() + this.getConfiguration().getDepartmentsQuery();
+
+		// 1) Filtro fijo configurado en el recurso
+		List<String> filters = new ArrayList<>();
+		if (StringUtil.isNotBlank(this.getConfiguration().getDepartmentFilter())) {
+			filters.add(this.getConfiguration().getDepartmentFilter());
+			System.out.println("Adding configured Department filter: " + filters);
+		}
+
+		// 2) Condiciones dinámicas (uid / name)
+		List<String> conditions = new ArrayList<>();
+		if (query != null) {
+			if (StringUtil.isNotBlank(query.byUid)) {
+				conditions.add(ATTR_EXTERNAL_CODE + " eq '" + query.byUid + "'");
+			}
+			if (StringUtil.isNotBlank(query.byName)) {
+				conditions.add("tolower(" + ATTR_NAME + ") like '%" + query.byName.toLowerCase() + "%'");
+			}
+		}
+
+		// 3) Construir / concatenar $filter
+		if (!conditions.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", conditions));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+			System.out.println("Adding dynamic Department conditions: " + conditions);
+		}
+
+		if (!filters.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", filters));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+			System.out.println("Final Department queryURL with static filters: " + queryURL);
+		}
+
+		// 4) Bucle paginado
+		while (StringUtil.isNotBlank(queryURL)) {
+			System.out.println("Querying departments at: " + queryURL);
+			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
+			JsonNode root = response.get("d");
+			JsonNode results  = root.get("results");
+
+			System.out.println("Department Query Response: " + response.toString());
+			System.out.println("Found " + results.size() + " departments");
+
+			for (JsonNode dep : results) {
+				ConnectorObject co = convertDepartmentToConnectorObject(dep);
+				handler.handle(co);
+			}
+			queryURL = root.hasNonNull(ATTR_NEXT) ? root.get(ATTR_NEXT).asText() : null;
+		}
+	}
+	
 	private void getDateIfExists(JsonNode object, String attribute, ConnectorObjectBuilder builder) {
 		if (object.hasNonNull(attribute)) {
 			addAttr(builder, attribute, this.getDate(object.get(attribute)));
@@ -539,10 +787,11 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			JsonNode location = user.get(ATTR_LOCATION);
 			addAttr(builder, ATTR_LOCATION, getValueForAttribute(location.asText()));
 		}
-		if(user.hasNonNull(ATTR_DEPARTMENT)) {
+		//DEPARTMENT LO TENGO QUE BUSCAR COMO departmentNav/Description
+		/*if(user.hasNonNull(ATTR_DEPARTMENT)) {
 			JsonNode department = user.get(ATTR_DEPARTMENT);
 			addAttr(builder, ATTR_DEPARTMENT, extractLastString(department.asText()));
-		}
+		}*/
 		if (user.hasNonNull(ATTR_EMPLOYMENTNAV)) {
 		System.out.println("DENTRO USER HAS NO NULL EMPLOYMENTNAV");
 			JsonNode employmentNav = user.get(ATTR_EMPLOYMENTNAV);
@@ -556,6 +805,68 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(ATTR_PERSON_ID_EXTERNAL), connectorObject);
 		 return connectorObject;
+	}
+	
+	private ConnectorObject convertBusinessUnitToConnectorObject(JsonNode businessUnit) {
+		String externalCode = businessUnit.get(ATTR_EXTERNAL_CODE).asText();
+		logger.info("Converting json to connector object. BusinessUnit id: {0}", externalCode);
+
+		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
+		builder.setUid(new Uid(externalCode));
+		builder.setName(externalCode);
+
+		// Agregamos atributos seguros
+		getIfExists(businessUnit, ATTR_NAME, builder);
+		getIfExists(businessUnit, ATTR_EXTERNAL_CODE, builder);
+		getIfExists(businessUnit, ATTR_STATUS, builder);
+
+		ConnectorObject connectorObject = builder.build();
+		logger.info("convertBusinessUnitToConnectorObject, id: {0}, \n\tconnectorObject: {1}", externalCode, connectorObject);
+		return connectorObject;
+	}
+
+	private ConnectorObject convertDivisionToConnectorObject(JsonNode division) {
+
+		String externalCode = division.get(ATTR_EXTERNAL_CODE).asText();
+		logger.info("Converting json to connector object. Division id: {0}", externalCode);
+		System.out.println("Converting json to connector object. Division id: " + externalCode);
+
+		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
+		builder.setUid(new Uid(externalCode));
+		builder.setName(externalCode);
+
+		// Obtener parent directamente si existe
+		if (division.hasNonNull("parent")) {
+			String parentCode = division.get("parent").asText();
+			System.out.println("OBTENIENDO PARENT: " + parentCode);
+			builder.addAttribute(ATTR_PARENT, parentCode);
+		}
+
+		// Atributos adicionales
+		getIfExists(division, ATTR_NAME, builder);
+		getIfExists(division, ATTR_EXTERNAL_CODE, builder);
+		getIfExists(division, ATTR_STATUS, builder);
+
+		ConnectorObject connectorObject = builder.build();
+		logger.ok("convertDivisionToConnectorObject, division: {0}, connectorObject: {1}", externalCode, connectorObject);
+		return connectorObject;
+	}
+
+	private ConnectorObject convertDepartmentToConnectorObject(JsonNode department)  {
+		String externalCode = department.get(ATTR_EXTERNAL_CODE).asText();
+		logger.info("Converting json to connector object. Department id: {0}", externalCode);
+		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
+		builder.setUid(new Uid(externalCode));
+		builder.setName(externalCode);
+
+		getIfExists(department, ATTR_NAME, builder);
+		getIfExists(department, ATTR_EXTERNAL_CODE, builder);
+		getIfExists(department, ATTR_PARENT, builder);
+		getIfExists(department, ATTR_STATUS, builder);
+
+		ConnectorObject connectorObject = builder.build();
+		logger.ok("convertDepartmentToConnectorObject, user: {0}, \n\tconnectorObject: {1}", externalCode, connectorObject);
+		return connectorObject;
 	}
 
 	@Override

@@ -17,6 +17,14 @@ public class SuccessFactorsConfiguration extends AbstractRestConfiguration {
 	private String client_secret;
 	private String url_sfsf_token;
 	private String apiKey;
+	
+	//Estructura Organizacional
+	private String businessUnitQuery;
+	private String divisionsQuery;
+	private String departmentsQuery;
+	private String businessUnitFilter;
+	private String divisionFilter;
+	private String departmentFilter;
 
 	public String getAuthMethod() {
 		return authMethod;
@@ -114,5 +122,54 @@ public class SuccessFactorsConfiguration extends AbstractRestConfiguration {
 	
 	public void setApiKey(String apiKey) {
 		this.apiKey = apiKey;
+	}
+	
+	//Estructura Organizacional
+	public String getBusinessUnitQuery() {
+		return businessUnitQuery;
+	}
+
+	public void setBusinessUnitQuery(String businessUnitQuery) {
+		this.businessUnitQuery = businessUnitQuery;
+	}
+	
+	public String getDivisionsQuery() {
+		return divisionsQuery;
+	}
+
+	public void setDivisionsQuery(String divisionsQuery) {
+		this.divisionsQuery = divisionsQuery;
+	}
+	
+	public String getDepartmentsQuery() {
+		return departmentsQuery;
+	}
+
+	public void setDepartmentsQuery(String departmentsQuery) {
+		this.departmentsQuery = departmentsQuery;
+	}
+	
+	public String getBusinessUnitFilter() {
+		return businessUnitFilter;
+	}
+
+	public void setBusinessUnitFilter(String businessUnitFilter) {
+		this.businessUnitFilter = businessUnitFilter;
+	}
+	
+	public String getDivisionFilter() {
+		return divisionFilter;
+	}
+
+	public void setDivisionFilter(String divisionFilter) {
+		this.divisionFilter = divisionFilter;
+	}
+	
+	public String getDepartmentFilter() {
+		return departmentFilter;
+	}
+
+	public void setDepartmentFilter(String departmentFilter) {
+		this.departmentFilter = departmentFilter;
 	}
 }
