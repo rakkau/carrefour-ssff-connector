@@ -79,12 +79,15 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_PERSONAL_INFO_NAV = "personalInfoNav";
 	private static final String ATTR_FIRST_NAME = "firstName";
 	private static final String ATTR_LAST_NAME = "lastName";
-	private static final String ATTR_BUSINESS_UNIT = "businessUnit";
 	private static final String ATTR_TITLE = "title";
 	private static final String ATTR_CUSTOM_STRING_NAV = "customString17Nav";
 	private static final String ATTR_CUSTOM_STRING_NAV_TITLE_DESC = "description";
-	private static final String ATTR_DEPARTMENTNAV = "departmentNav";
-	private static final String ATTR_DEPARTMENTNAV_DESC = "description";
+	private static final String ATTR_BUSINESS_UNIT_NAV = "businessUnitNav";
+	private static final String ATTR_BUSINESS_UNIT_NAV_NAME = "name";
+	private static final String ATTR_DIVISION_NAV = "divisionNav";
+	private static final String ATTR_DIVISION_NAV_NAME = "name";
+	private static final String ATTR_DEPARTMENT_NAV = "departmentNav";
+	private static final String ATTR_DEPARTMENT_NAV_NAME = "name";
 
 	// Orgs Attributes
 	private static final String ATTR_EXTERNAL_CODE = "externalCode";
@@ -120,7 +123,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		businessUnitSchema(schemaBuilder);
 		divisionSchema(schemaBuilder);
 		departmentSchema(schemaBuilder);
-		System.out.println("Exiting schema builder");
 		return schemaBuilder.build();
 	}
 
@@ -148,13 +150,14 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DEPARTMENT).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NATIONAL_ID).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_CUIL).build());
-		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_BUSINESS_UNIT).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_BUSINESS_UNIT_NAV).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DIVISION_NAV).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DEPARTMENT_NAV).build());
 
 		schemaBuilder.defineObjectClass(accountBuilder.build());
 	}
 	
 	private void businessUnitSchema(SchemaBuilder schemaBuilder) {
-		System.out.println("DENTRO businessUnitSchema");
 		ObjectClassInfoBuilder businessUnitBuilder = new ObjectClassInfoBuilder();
 		businessUnitBuilder.setType(BUSINESSUNIT_OBJECT_CLASS);
 		businessUnitBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_EXTERNAL_CODE).build());
@@ -166,7 +169,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	}
 	
 	private void divisionSchema(SchemaBuilder schemaBuilder) {
-		System.out.println("DENTRO divisionSchema");
 		ObjectClassInfoBuilder divisionBuilder = new ObjectClassInfoBuilder();
 		divisionBuilder.setType(DIVISION_OBJECT_CLASS);
 		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_EXTERNAL_CODE).build());
@@ -197,13 +199,10 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
 			queryAccounts(query, resultsHandler, options);
 		} else if (objectClass.is(BUSINESSUNIT_OBJECT_CLASS)) {
-			System.out.println("DENTRO executeQuery BUSINESSUNIT_OBJECT_CLASS");
 			queryBusinessUnits(query, resultsHandler, options);
 		} else if (objectClass.is(DIVISION_OBJECT_CLASS)) {
-			System.out.println("DENTRO executeQuery DIVISION_OBJECT_CLASS");
 			queryDivisions(query, resultsHandler, options);
 		} else if (objectClass.is(DEPARTMENT_OBJECT_CLASS)) {
-			System.out.println("DENTRO executeQuery DEPARTMENT_OBJECT_CLASS");
 			queryDepartments(query, resultsHandler, options);
 		} else {
 			throw new ConnectorException("ObjectClass " + objectClass.getObjectClassValue() + " unknown on executeQuery");
@@ -227,20 +226,17 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	}
 
 	public String getToken() {
-		System.out.println("Iniciando flujo para obtener token de SuccessFactors");
+		logger.info("Iniciando flujo para obtener token de SuccessFactors");
 
 		// Paso 1: Obtener IAS Access Token
 		String iasAccessToken = getIasAccessToken();
 
-		System.out.println("Despues de paso 1. Valor de IASACCESTOKEN: " + iasAccessToken);
 		// Paso 2: Intercambiar IAS token por SAML Assertion
 		String samlAssertion = getSamlAssertionFromIas(iasAccessToken);
 
-		System.out.println("Despues de paso 2. Valor de SAMLASSERTION: " + samlAssertion);
 		// Paso 3: Usar assertion para obtener el token final de SuccessFactors
 		String finalAccessToken = getSfsfAccessTokenFromAssertion(samlAssertion);
 
-		System.out.println("Despues de paso 3. Valor de FINALACCESSTOKEN: " + finalAccessToken);
 		this.accessToken = finalAccessToken;
 		this.expiresAt = System.currentTimeMillis() + 3600 * 1000L;
 
@@ -248,7 +244,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	}
 	
 	private String getIasAccessToken() {
-		System.out.println("Obteniendo token de SuccessFactors usando OAuth 2.0 password grant");
 		HttpPost request = new HttpPost(this.getConfiguration().getUrl_token());
 
 		GuardedString passwordGuarded = this.getConfiguration().getPassword();
@@ -268,27 +263,22 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		params.add(new BasicNameValuePair("username", this.getConfiguration().getUsername()));
 		params.add(new BasicNameValuePair("password", password));
 		params.add(new BasicNameValuePair("client_id", this.getConfiguration().getClient_id()));
-		params.add(new BasicNameValuePair("client_secret", this.getConfiguration().getClient_secret())); // Si es necesario
+		params.add(new BasicNameValuePair("client_secret", this.getConfiguration().getClient_secret()));
 
-		System.out.println("PARAMS FINALES: " + params);
 		try {
 			request.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
 		} catch (UnsupportedEncodingException e) {
 			throw new RuntimeException(e);
 		}
 
-		System.out.println("ANTES REQUEST SET HEADER");
 		request.setHeader("Content-Type", "application/x-www-form-urlencoded");
 		
-		System.out.println("ANTES RESPONSE CALL REQUEST: "+request);
 		JsonNode response = this.httpUtils.callRequest(request);
 
-		System.out.println("ANTES DE RETORNAR ACCESS TOKEN: " + response.get("access_token").asText());
 		return response.get("access_token").asText();
 	}
 
 	private String getSamlAssertionFromIas(String iasAccessToken) {
-		System.out.println("Obteniendo SAML Assertion usando token exchange");
 		HttpPost request = new HttpPost(this.getConfiguration().getUrl_token());
 
 		List<NameValuePair> params = new ArrayList<>();
@@ -310,7 +300,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		// Autenticación con client_id y secret en Authorization: Basic
 		String auth = this.getConfiguration().getClient_id() + ":" + this.getConfiguration().getClient_secret();
 		String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
-		request.setHeader("Authorization", "Basic " + encodedAuth); // <- Este es el header correcto
+		request.setHeader("Authorization", "Basic " + encodedAuth);
 
 		JsonNode response = this.httpUtils.callRequest(request);
 
@@ -318,12 +308,11 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	}
 
 	private String getSfsfAccessTokenFromAssertion(String assertion) {
-		System.out.println("Obteniendo token de SuccessFactors usando SAML assertion");
 
 		HttpPost request = new HttpPost(this.getConfiguration().getUrl_sfsf_token());
 
 		List<NameValuePair> params = new ArrayList<>();
-		params.add(new BasicNameValuePair("client_id", this.getConfiguration().getApiKey()));  // <-- Este es el API Key
+		params.add(new BasicNameValuePair("client_id", this.getConfiguration().getApiKey()));
 		params.add(new BasicNameValuePair("company_id", this.getConfiguration().getCompany_id()));
 		params.add(new BasicNameValuePair("grant_type", "urn:ietf:params:oauth:grant-type:saml2-bearer"));
 		params.add(new BasicNameValuePair("assertion", assertion));
@@ -347,7 +336,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			logger.info("Access token expired. Expired at: {0})", expiresAt );
 			return getToken();
 		}
-		System.out.println("Token NOT expired");
+		logger.info("Token NOT expired");
 		return accessToken;
 	}
 
@@ -356,7 +345,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	}
 	
 	private void queryAccounts(SuccessFactorsFilter query, ResultsHandler handler, OperationOptions options){
-		System.out.println("QUERY: "+query);
 		String queryURL = this.getConfiguration().getServiceAddress();
 		queryURL = queryURL + this.getConfiguration().getAccountsQuery();
 
@@ -392,9 +380,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		}
 
 		queryURL = queryURL + "&fromDate=" + getCurrentDate() + "&toDate=9999-12-31";
-		System.out.println("queryURL: "+queryURL);
 
-		// Iterate over a loop because results can be paginated
 		while(StringUtil.isNotBlank(queryURL)) {
 			logger.info("Querying accounts at {0}", queryURL);
 			HttpGet request = new HttpGet(queryURL);
@@ -411,7 +397,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			logger.info("Query after querying, before next apply: {0}", queryURL);
 			queryURL = root.hasNonNull(ATTR_NEXT) ? root.get(ATTR_NEXT).asText() : null;
 			logger.info("Query after querying, with next apply: {0}", queryURL);
-		System.out.println("queryURL: "+queryURL);
 		}
 	}
 
@@ -424,7 +409,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		List<String> filters = new ArrayList<>();
 		if (StringUtil.isNotBlank(this.getConfiguration().getBusinessUnitFilter())) {
 			filters.add(this.getConfiguration().getBusinessUnitFilter());
-			System.out.println("Adding configured BU filter: " + filters);
 		}
 
 		// 2) Condiciones dinámicas (uid / name)
@@ -446,7 +430,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			} else {
 				queryURL += "&$filter=" + extra;
 			}
-			System.out.println("Adding dynamic conditions: " + conditions);
 		}
 
 		if (!filters.isEmpty()) {
@@ -456,21 +439,13 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			} else {
 				queryURL += "&$filter=" + extra;
 			}
-			System.out.println("Final queryURL with static filters: " + queryURL);
 		}
 
-		// 4) (Opcional) ventana temporal — solo si aplica a BU
-		// queryURL += "&fromDate=" + getCurrentDate() + "&toDate=9999-12-31";
-
-		// 5) Bucle de paginación
+		// 4) Bucle de paginación
 		while (StringUtil.isNotBlank(queryURL)) {
-			System.out.println("Querying businessUnits at: " + queryURL);
 			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
 			JsonNode root = response.get("d");
 			JsonNode results  = root.get("results");
-
-			System.out.println("Business Unit Query Response: " + response.toString());
-			System.out.println("Found " + results.size() + " businessUnits");
 
 			for (JsonNode bu : results) {
 				ConnectorObject co = convertBusinessUnitToConnectorObject(bu);
@@ -491,7 +466,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		List<String> filters = new ArrayList<>();
 		if (StringUtil.isNotBlank(this.getConfiguration().getDivisionFilter())) {
 			filters.add(this.getConfiguration().getDivisionFilter());
-			System.out.println("Adding configured Division filter: " + filters);
 		}
 
 		// 2) Condiciones dinámicas (uid / name)
@@ -513,7 +487,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			} else {
 				queryURL += "&$filter=" + extra;
 			}
-			System.out.println("Adding dynamic Division conditions: " + conditions);
 		}
 
 		if (!filters.isEmpty()) {
@@ -523,18 +496,13 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			} else {
 				queryURL += "&$filter=" + extra;
 			}
-			System.out.println("Final Division queryURL with static filters: " + queryURL);
 		}
 
 		// 4) Bucle paginado
 		while (StringUtil.isNotBlank(queryURL)) {
-			System.out.println("Querying divisions at: " + queryURL);
 			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
 			JsonNode root = response.get("d");
 			JsonNode results  = root.get("results");
-
-			System.out.println("Division Query Response: " + response.toString());
-			System.out.println("Found " + results.size() + " divisions");
 
 			for (JsonNode div : results) {
 				ConnectorObject co = convertDivisionToConnectorObject(div);
@@ -553,7 +521,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		List<String> filters = new ArrayList<>();
 		if (StringUtil.isNotBlank(this.getConfiguration().getDepartmentFilter())) {
 			filters.add(this.getConfiguration().getDepartmentFilter());
-			System.out.println("Adding configured Department filter: " + filters);
 		}
 
 		// 2) Condiciones dinámicas (uid / name)
@@ -575,7 +542,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			} else {
 				queryURL += "&$filter=" + extra;
 			}
-			System.out.println("Adding dynamic Department conditions: " + conditions);
 		}
 
 		if (!filters.isEmpty()) {
@@ -585,18 +551,13 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			} else {
 				queryURL += "&$filter=" + extra;
 			}
-			System.out.println("Final Department queryURL with static filters: " + queryURL);
 		}
 
 		// 4) Bucle paginado
 		while (StringUtil.isNotBlank(queryURL)) {
-			System.out.println("Querying departments at: " + queryURL);
 			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
 			JsonNode root = response.get("d");
 			JsonNode results  = root.get("results");
-
-			System.out.println("Department Query Response: " + response.toString());
-			System.out.println("Found " + results.size() + " departments");
 
 			for (JsonNode dep : results) {
 				ConnectorObject co = convertDepartmentToConnectorObject(dep);
@@ -671,7 +632,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		JsonNode results = jobInfoNav.get(ATTR_RESULTS);
 		if (results.isArray() && results.size() > 0) {
 			JsonNode firstResult = results.get(0);
-			//getIfExists(firstResult, ATTR_MANAGER_ID, builder, ATTR_MANAGER);
 			getIfExists(firstResult, ATTR_COMPANY, builder);
 			getIfExists(firstResult, ATTR_EVENT_REASON, builder);
 		}
@@ -702,15 +662,13 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	 * @return
 	 */
 	private void getAttrsFromPersonNav(ConnectorObjectBuilder builder, JsonNode personNav) {
-		System.out.println("Getting user attrs from json attribute personNav.");
+		logger.info("Getting user attrs from json attribute personNav.");
 
 		if (personNav.hasNonNull(ATTR_NATIONAL_ID_NAV)) {
-		System.out.println("DENTRO PERSON NAV NATIONAL ID NAV");
 			JsonNode nationalIdNav = personNav.get(ATTR_NATIONAL_ID_NAV);
 			getAttrsFromNationalIdNav(builder, nationalIdNav);
 		}
 		if (personNav.hasNonNull(ATTR_PERSONAL_INFO_NAV)) {
-			System.out.println("DENTRO PERSON NAV PERSONAL INFO NAV");
 			JsonNode personalInfoNav = personNav.get(ATTR_PERSONAL_INFO_NAV);
 			getAttrsFromPersonalInfoNav(builder, personalInfoNav);
 		}
@@ -748,7 +706,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	 * @throws IOException
 	 */
 	private ConnectorObject convertUserToConnectorObject(JsonNode user)  {
-		System.out.println("DENTRO CONVERTUSERTOCONNECTOROBJECT USER: "+user);
 		logger.info("Converting json to connector object. User id: {0}", user.get(ATTR_PERSON_ID_EXTERNAL));
 		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
 
@@ -761,16 +718,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		getDateIfExists(user, ATTR_HIRE_DATE, builder);
 		getIfExists(user, ATTR_USERNAME, builder);
 		getIfExists(user, ATTR_EMAIL, builder, ATTR_EMAIL_ADDRESS);
-		//getIfExists(user, ATTR_TITLE, builder); //Lo debería tener en otro método
-		//getIfExists(user, ATTR_FIRST_NAME, builder); //Lo tengo en otro metodo
-		//getIfExists(user, ATTR_LAST_NAME, builder); //Lo tengo en otro metodo
 		getIfExists(user, ATTR_MANAGER_ID, builder, ATTR_MANAGER);
-		getIfExists(user, ATTR_BUSINESS_UNIT, builder);
-
-		/*if (user.hasNonNull(ATTR_EMPINFO)) {
-			JsonNode employmentNav = user.get(ATTR_EMPINFO);
-			getAttrsFromEmpInfo(builder, employmentNav);
-		}*/
 
 		if(user.hasNonNull(ATTR_DIVISION)) {
 			JsonNode division = user.get(ATTR_DIVISION);
@@ -783,24 +731,28 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		}
 
 		if(user.hasNonNull(ATTR_LOCATION)) {
-		System.out.println("DENTRO USER HAS NO NULL LOCATION");
 			JsonNode location = user.get(ATTR_LOCATION);
 			addAttr(builder, ATTR_LOCATION, getValueForAttribute(location.asText()));
 		}
-		//DEPARTMENT LO TENGO QUE BUSCAR COMO departmentNav/Description
-		/*if(user.hasNonNull(ATTR_DEPARTMENT)) {
-			JsonNode department = user.get(ATTR_DEPARTMENT);
-			addAttr(builder, ATTR_DEPARTMENT, extractLastString(department.asText()));
-		}*/
 		if (user.hasNonNull(ATTR_EMPLOYMENTNAV)) {
-		System.out.println("DENTRO USER HAS NO NULL EMPLOYMENTNAV");
 			JsonNode employmentNav = user.get(ATTR_EMPLOYMENTNAV);
 			getAttrsFromEmploymentNav(builder, employmentNav);
 		}
 		if (user.hasNonNull(ATTR_CUSTOM_STRING_NAV)) {
-		System.out.println("DENTRO USER HAS NO NULL CUSTOMSTRING17NAV");
 			JsonNode custStringNav = user.get(ATTR_CUSTOM_STRING_NAV);
 			getAttrsFromCustomStringNav(builder, custStringNav);
+		}
+		if (user.hasNonNull(ATTR_BUSINESS_UNIT_NAV)) {
+			JsonNode businessUnitNav = user.get(ATTR_BUSINESS_UNIT_NAV);
+			getAttrsFromBusinessUnitNav(builder, businessUnitNav);
+		}
+		if (user.hasNonNull(ATTR_DIVISION_NAV)) {
+			JsonNode divisionNav = user.get(ATTR_DIVISION_NAV);
+			getAttrsFromDivisionNav(builder, divisionNav);
+		}
+		if (user.hasNonNull(ATTR_DEPARTMENT_NAV)) {
+			JsonNode departmentNav = user.get(ATTR_DEPARTMENT_NAV);
+			getAttrsFromDepartmentNav(builder, departmentNav);
 		}
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(ATTR_PERSON_ID_EXTERNAL), connectorObject);
@@ -829,7 +781,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 
 		String externalCode = division.get(ATTR_EXTERNAL_CODE).asText();
 		logger.info("Converting json to connector object. Division id: {0}", externalCode);
-		System.out.println("Converting json to connector object. Division id: " + externalCode);
 
 		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
 		builder.setUid(new Uid(externalCode));
@@ -838,7 +789,6 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		// Obtener parent directamente si existe
 		if (division.hasNonNull("parent")) {
 			String parentCode = division.get("parent").asText();
-			System.out.println("OBTENIENDO PARENT: " + parentCode);
 			builder.addAttribute(ATTR_PARENT, parentCode);
 		}
 
@@ -1010,7 +960,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	 * @return
 	 */
 	private void getAttrsFromNationalIdNav(ConnectorObjectBuilder builder, JsonNode nationalIdNav) {
-	System.out.println("Getting attrs from json attribute nationalIdNav.");
+	logger.info("Getting attrs from json attribute nationalIdNav.");
 	if (!nationalIdNav.hasNonNull(ATTR_RESULTS)) {
 		return;
 	}
@@ -1029,15 +979,15 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 					String uri = metadata.get(ATTR_URI).toString();
 
 					if (uri.contains("cardType='DNI'")) {
-						System.out.println("Getting DNI.");
+						logger.info("Getting DNI.");
 						nationalId = value;
 					} else if (uri.contains("cardType='cuil'")) {
-						System.out.println("Getting CUIL.");
+						logger.info("Getting CUIL.");
 						cuil = value;
 
 						// También podemos usar CUIL para extraer DNI si aún no se obtuvo
 						if (nationalId == null) {
-							System.out.println("Getting DNI from CUIL.");
+							logger.info("Getting DNI from CUIL.");
 							nationalId = extractDNIFromCUIL(value);
 						}
 					}
@@ -1109,4 +1059,75 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			}
 	}
 	
+	/**
+	 * Extracts user attributes from businessUnitNav object.
+	 * @param builder
+	 * @param businessUnitNav
+	 * @return
+	 */
+	private void getAttrsFromBusinessUnitNav(ConnectorObjectBuilder builder, JsonNode businessUnitNav) {
+		if (businessUnitNav.hasNonNull("__metadata")) {
+			JsonNode metadata = businessUnitNav.get("__metadata");
+			if (metadata.hasNonNull("uri")) {
+				String uri = metadata.get("uri").asText();
+				
+				// Extraer externalCode del string
+				String externalCode = extractExternalCode(uri);
+				if (externalCode != null) {
+					addAttr(builder, ATTR_BUSINESS_UNIT_NAV, externalCode);
+				}
+			}
+		}
+	}
+	
+	private String extractExternalCode(String uri) {
+		try {
+			int start = uri.indexOf("externalCode='") + "externalCode='".length();
+			int end = uri.indexOf("'", start);
+			if (start > -1 && end > -1) {
+				return uri.substring(start, end);
+			}
+		} catch (Exception e) {
+			logger.info("Error extracting externalCode from URI: " + e.getMessage());
+		}
+		return null;
+	}
+	
+	/**
+	 * Extracts user attributes from divisionNav object.
+	 * @param builder
+	 * @param divisionNav
+	 * @return
+	 */
+	private void getAttrsFromDivisionNav(ConnectorObjectBuilder builder, JsonNode divisionNav) {
+		if (divisionNav.hasNonNull("__metadata")) {
+			JsonNode metadata = divisionNav.get("__metadata");
+			if (metadata.hasNonNull("uri")) {
+				String uri = metadata.get("uri").asText();
+				String externalCode = extractExternalCode(uri);
+				if (externalCode != null) {
+					addAttr(builder, ATTR_DIVISION_NAV, externalCode);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Extracts user attributes from departmentNav object.
+	 * @param builder
+	 * @param departmentNav
+	 * @return
+	 */
+	private void getAttrsFromDepartmentNav(ConnectorObjectBuilder builder, JsonNode departmentNav) {
+		if (departmentNav.hasNonNull("__metadata")) {
+			JsonNode metadata = departmentNav.get("__metadata");
+			if (metadata.hasNonNull("uri")) {
+				String uri = metadata.get("uri").asText();
+				String externalCode = extractExternalCode(uri);
+				if (externalCode != null) {
+					addAttr(builder, ATTR_DEPARTMENT_NAV, externalCode);
+				}
+			}
+		}
+	}
 }
