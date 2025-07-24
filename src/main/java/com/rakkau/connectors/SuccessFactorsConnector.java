@@ -88,6 +88,8 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_DIVISION_NAV_NAME = "name";
 	private static final String ATTR_DEPARTMENT_NAV = "departmentNav";
 	private static final String ATTR_DEPARTMENT_NAV_NAME = "name";
+	private static final String ATTR_LOCATION_NAV = "locationNav";
+	private static final String ATTR_LOCATION_NAV_NAME = "name";
 
 	// Orgs Attributes
 	private static final String ATTR_EXTERNAL_CODE = "externalCode";
@@ -153,6 +155,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_BUSINESS_UNIT_NAV).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DIVISION_NAV).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DEPARTMENT_NAV).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_LOCATION_NAV).build());
 
 		schemaBuilder.defineObjectClass(accountBuilder.build());
 	}
@@ -754,6 +757,10 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			JsonNode departmentNav = user.get(ATTR_DEPARTMENT_NAV);
 			getAttrsFromDepartmentNav(builder, departmentNav);
 		}
+		if (user.hasNonNull(ATTR_LOCATION_NAV)) {
+			JsonNode locationNav = user.get(ATTR_LOCATION_NAV);
+			getAttrsFromLocationNav(builder, locationNav);
+		}
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(ATTR_PERSON_ID_EXTERNAL), connectorObject);
 		 return connectorObject;
@@ -1126,6 +1133,25 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 				String externalCode = extractExternalCode(uri);
 				if (externalCode != null) {
 					addAttr(builder, ATTR_DEPARTMENT_NAV, externalCode);
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Extracts user attributes from locationNav object.
+	 * @param builder
+	 * @param locationNav
+	 * @return
+	 */
+	private void getAttrsFromLocationNav(ConnectorObjectBuilder builder, JsonNode locationNav) {
+		if (locationNav.hasNonNull("__metadata")) {
+			JsonNode metadata = locationNav.get("__metadata");
+			if (metadata.hasNonNull("uri")) {
+				String uri = metadata.get("uri").asText();
+				String externalCode = extractExternalCode(uri);
+				if (externalCode != null) {
+					addAttr(builder, ATTR_LOCATION_NAV, externalCode);
 				}
 			}
 		}
