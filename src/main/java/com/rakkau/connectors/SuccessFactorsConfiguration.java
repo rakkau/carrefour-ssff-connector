@@ -25,6 +25,8 @@ public class SuccessFactorsConfiguration extends AbstractRestConfiguration {
 	private String businessUnitFilter;
 	private String divisionFilter;
 	private String departmentFilter;
+	private String puntoOperacionalQuery;
+	private String puntoOperacionalFilter;
 
 	public String getAuthMethod() {
 		return authMethod;
@@ -171,5 +173,21 @@ public class SuccessFactorsConfiguration extends AbstractRestConfiguration {
 
 	public void setDepartmentFilter(String departmentFilter) {
 		this.departmentFilter = departmentFilter;
+	}
+	
+	public String getPuntoOperacionalQuery() {
+		return puntoOperacionalQuery;
+	}
+
+	public void setPuntoOperacionalQuery(String puntoOperacionalQuery) {
+		this.puntoOperacionalQuery = puntoOperacionalQuery;
+	}
+	
+	public String getPuntoOperacionalFilter() {
+		return puntoOperacionalFilter;
+	}
+
+	public void setPuntoOperacionalFilter(String puntoOperacionalFilter) {
+		this.puntoOperacionalFilter = puntoOperacionalFilter;
 	}
 }

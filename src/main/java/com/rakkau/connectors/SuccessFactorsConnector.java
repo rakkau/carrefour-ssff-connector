@@ -85,11 +85,10 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_BUSINESS_UNIT_NAV = "businessUnitNav";
 	private static final String ATTR_BUSINESS_UNIT_NAV_NAME = "name";
 	private static final String ATTR_DIVISION_NAV = "divisionNav";
-	private static final String ATTR_DIVISION_NAV_NAME = "name";
 	private static final String ATTR_DEPARTMENT_NAV = "departmentNav";
-	private static final String ATTR_DEPARTMENT_NAV_NAME = "name";
 	private static final String ATTR_LOCATION_NAV = "locationNav";
-	private static final String ATTR_LOCATION_NAV_NAME = "name";
+	private static final String ATTR_POSITION_NAV = "positionNav";
+	private static final String ATTR_POSITION_NAV_DEPARTMENT = "department";
 
 	// Orgs Attributes
 	private static final String ATTR_EXTERNAL_CODE = "externalCode";
@@ -101,6 +100,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String BUSINESSUNIT_OBJECT_CLASS = ObjectClassUtil.createSpecialName("BUSINESSUNIT");
 	private static final String DIVISION_OBJECT_CLASS = ObjectClassUtil.createSpecialName("DIVISION");
 	private static final String DEPARTMENT_OBJECT_CLASS = ObjectClassUtil.createSpecialName("DEPARTMENT");
+	private static final String PUNTOOPERACIONAL_OBJECT_CLASS = ObjectClassUtil.createSpecialName("PUNTOOPERACIONAL");
 
 	private SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 	final Pattern NUMBER_MATCHER = Pattern.compile("(-?\\d+)");
@@ -125,6 +125,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		businessUnitSchema(schemaBuilder);
 		divisionSchema(schemaBuilder);
 		departmentSchema(schemaBuilder);
+		puntoOperacionalSchema(schemaBuilder);
 		return schemaBuilder.build();
 	}
 
@@ -156,6 +157,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DIVISION_NAV).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_DEPARTMENT_NAV).build());
 		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_LOCATION_NAV).build());
+		accountBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_POSITION_NAV).build());
 
 		schemaBuilder.defineObjectClass(accountBuilder.build());
 	}
@@ -190,6 +192,15 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		departmentBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_STATUS).build());
 		schemaBuilder.defineObjectClass(departmentBuilder.build());
 	}
+	
+	private void puntoOperacionalSchema(SchemaBuilder schemaBuilder) {
+		ObjectClassInfoBuilder puntoOperacionalBuilder = new ObjectClassInfoBuilder();
+		puntoOperacionalBuilder.setType(PUNTOOPERACIONAL_OBJECT_CLASS);
+		puntoOperacionalBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_EXTERNAL_CODE).build());
+		puntoOperacionalBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NAME).build());
+		puntoOperacionalBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_STATUS).build());
+		schemaBuilder.defineObjectClass(puntoOperacionalBuilder.build());
+	}
 
 	@Override
 	public FilterTranslator createFilterTranslator(ObjectClass objectClass, OperationOptions operationOptions) {
@@ -207,6 +218,8 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			queryDivisions(query, resultsHandler, options);
 		} else if (objectClass.is(DEPARTMENT_OBJECT_CLASS)) {
 			queryDepartments(query, resultsHandler, options);
+		} else if (objectClass.is(PUNTOOPERACIONAL_OBJECT_CLASS)) {
+			queryPuntoOperacional(query, resultsHandler, options);
 		} else {
 			throw new ConnectorException("ObjectClass " + objectClass.getObjectClassValue() + " unknown on executeQuery");
 		}
@@ -570,6 +583,61 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		}
 	}
 	
+	private void queryPuntoOperacional(SuccessFactorsFilter query, ResultsHandler handler, OperationOptions options) {
+
+		// 0) Path base
+		String queryURL = this.getConfiguration().getServiceAddress() + this.getConfiguration().getPuntoOperacionalQuery();
+
+		// 1) Filtro fijo configurado en el recurso
+		List<String> filters = new ArrayList<>();
+		if (StringUtil.isNotBlank(this.getConfiguration().getPuntoOperacionalFilter())) {
+			filters.add(this.getConfiguration().getPuntoOperacionalFilter());
+		}
+
+		// 2) Condiciones dinámicas (uid / name)
+		List<String> conditions = new ArrayList<>();
+		if (query != null) {
+			if (StringUtil.isNotBlank(query.byUid)) {
+				conditions.add(ATTR_EXTERNAL_CODE + " eq '" + query.byUid + "'");
+			}
+			if (StringUtil.isNotBlank(query.byName)) {
+				conditions.add("tolower(" + ATTR_NAME + ") like '%" + query.byName.toLowerCase() + "%'");
+			}
+		}
+
+		// 3) Construir / concatenar $filter
+		if (!conditions.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", conditions));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+		}
+
+		if (!filters.isEmpty()) {
+			String extra = HttpUtils.encodeURI(String.join(" and ", filters));
+			if (queryURL.contains("$filter=")) {
+				queryURL += "%20and%20" + extra;
+			} else {
+				queryURL += "&$filter=" + extra;
+			}
+		}
+
+		// 4) Bucle paginado
+		while (StringUtil.isNotBlank(queryURL)) {
+			JsonNode response = this.callRequestAuth(new HttpGet(queryURL));
+			JsonNode root = response.get("d");
+			JsonNode results  = root.get("results");
+
+			for (JsonNode po : results) {
+				ConnectorObject co = convertPuntoOperacionalToConnectorObject(po);
+				handler.handle(co);
+			}
+			queryURL = root.hasNonNull(ATTR_NEXT) ? root.get(ATTR_NEXT).asText() : null;
+		}
+	}
+	
 	private void getDateIfExists(JsonNode object, String attribute, ConnectorObjectBuilder builder) {
 		if (object.hasNonNull(attribute)) {
 			addAttr(builder, attribute, this.getDate(object.get(attribute)));
@@ -761,6 +829,10 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			JsonNode locationNav = user.get(ATTR_LOCATION_NAV);
 			getAttrsFromLocationNav(builder, locationNav);
 		}
+		if (user.hasNonNull(ATTR_POSITION_NAV)) {
+			JsonNode positionNav = user.get(ATTR_POSITION_NAV);
+			getAttrsFromPositionNav(builder, positionNav);
+		}
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(ATTR_PERSON_ID_EXTERNAL), connectorObject);
 		 return connectorObject;
@@ -823,6 +895,22 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertDepartmentToConnectorObject, user: {0}, \n\tconnectorObject: {1}", externalCode, connectorObject);
+		return connectorObject;
+	}
+	
+	private ConnectorObject convertPuntoOperacionalToConnectorObject(JsonNode puntooperacional)  {
+		String externalCode = puntooperacional.get(ATTR_EXTERNAL_CODE).asText();
+		logger.info("Converting json to connector object. Punto Operacional id: {0}", externalCode);
+		ConnectorObjectBuilder builder = new ConnectorObjectBuilder();
+		builder.setUid(new Uid(externalCode));
+		builder.setName(externalCode);
+
+		getIfExists(puntooperacional, ATTR_NAME, builder);
+		getIfExists(puntooperacional, ATTR_EXTERNAL_CODE, builder);
+		getIfExists(puntooperacional, ATTR_STATUS, builder);
+
+		ConnectorObject connectorObject = builder.build();
+		logger.ok("convertPuntoOperacionalToConnectorObject, user: {0}, \n\tconnectorObject: {1}", externalCode, connectorObject);
 		return connectorObject;
 	}
 
@@ -1063,6 +1151,20 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 			if (customString17Nav.hasNonNull(ATTR_CUSTOM_STRING_NAV_TITLE_DESC)) {
 				JsonNode customString17NavDesc = customString17Nav.get(ATTR_CUSTOM_STRING_NAV_TITLE_DESC);
 				addAttr(builder, ATTR_TITLE, customString17NavDesc.asText());
+			}
+	}
+	
+	/**
+	 * Extracts user attributes from positionNav object.
+	 * @param builder
+	 * @param positionNav
+	 * @return
+	 */
+	private void getAttrsFromPositionNav(ConnectorObjectBuilder builder, JsonNode positionNav) {
+		
+			if (positionNav.hasNonNull(ATTR_POSITION_NAV_DEPARTMENT)) {
+				JsonNode positionNavDepartment = positionNav.get(ATTR_POSITION_NAV_DEPARTMENT);
+				addAttr(builder, ATTR_POSITION_NAV, positionNavDepartment.asText());
 			}
 	}
 	
