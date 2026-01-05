@@ -95,6 +95,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	private static final String ATTR_PARENT = "parent";
 	private static final String ATTR_NAME = "name";
 	private static final String ATTR_STATUS = "status";
+	private static final String ATTR_CUST_TO_BUSINESS_UNIT = "cust_toBusinessUnit";
 
 	// Custom Object Classes
 	private static final String BUSINESSUNIT_OBJECT_CLASS = ObjectClassUtil.createSpecialName("BUSINESSUNIT");
@@ -180,6 +181,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_PARENT).build());
 		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_NAME).build());
 		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_STATUS).build());
+		divisionBuilder.addAttributeInfo(new AttributeInfoBuilder(ATTR_CUST_TO_BUSINESS_UNIT).build());
 		schemaBuilder.defineObjectClass(divisionBuilder.build());
 	}
 	
@@ -704,7 +706,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		if (results.isArray() && results.size() > 0) {
 			JsonNode firstResult = results.get(0);
 			getIfExists(firstResult, ATTR_COMPANY, builder);
-			getIfExists(firstResult, ATTR_EVENT_REASON, builder);
+			//getIfExists(firstResult, ATTR_EVENT_REASON, builder);
 		}
 	}
 	/**
@@ -790,6 +792,7 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		getIfExists(user, ATTR_USERNAME, builder);
 		getIfExists(user, ATTR_EMAIL, builder, ATTR_EMAIL_ADDRESS);
 		getIfExists(user, ATTR_MANAGER_ID, builder, ATTR_MANAGER);
+		getIfExists(user, ATTR_EVENT_REASON, builder);
 
 		if(user.hasNonNull(ATTR_DIVISION)) {
 			JsonNode division = user.get(ATTR_DIVISION);
@@ -875,6 +878,10 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 		getIfExists(division, ATTR_NAME, builder);
 		getIfExists(division, ATTR_EXTERNAL_CODE, builder);
 		getIfExists(division, ATTR_STATUS, builder);
+		if (division.hasNonNull(ATTR_CUST_TO_BUSINESS_UNIT)) {
+			JsonNode cust_toBusinessUnit = division.get(ATTR_CUST_TO_BUSINESS_UNIT);
+			getAttrsFromCustToBusinessUnit(builder, cust_toBusinessUnit);
+		}
 
 		ConnectorObject connectorObject = builder.build();
 		logger.ok("convertDivisionToConnectorObject, division: {0}, connectorObject: {1}", externalCode, connectorObject);
@@ -1256,6 +1263,39 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 					addAttr(builder, ATTR_LOCATION_NAV, externalCode);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Extracts user attributes from cust_toBusinessUnit object.
+	 * @param builder
+	 * @param cust_toBusinessUnit
+	 * @return
+	 */
+	private void getAttrsFromCustToBusinessUnit(ConnectorObjectBuilder builder, JsonNode cust_toBusinessUnit) {
+
+		// Verifica si existe el array "results"
+		if (cust_toBusinessUnit.has("results") && cust_toBusinessUnit.get("results").isArray()) {
+			JsonNode resultsArray = cust_toBusinessUnit.get("results");
+
+			if (resultsArray.size() > 0) {
+				JsonNode firstResult = resultsArray.get(0);
+
+				if (firstResult.hasNonNull("__metadata")) {
+					JsonNode metadata = firstResult.get("__metadata");
+
+					if (metadata.hasNonNull("uri")) {
+						String uri = metadata.get("uri").asText();
+						String externalCode = extractExternalCode(uri);
+
+						if (externalCode != null) {
+							addAttr(builder, ATTR_CUST_TO_BUSINESS_UNIT, externalCode);
+						}
+					}
+				}
+			}
+		} else {
+			logger.info("El nodo cust_toBusinessUnit no tiene 'results' o no es un array.");
 		}
 	}
 }
