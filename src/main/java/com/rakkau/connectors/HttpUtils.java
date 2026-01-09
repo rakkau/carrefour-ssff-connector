@@ -6,7 +6,12 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 import org.apache.commons.codec.binary.StringUtils;
+import org.apache.http.Consts;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHeaders;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.*;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpRequestBase;
@@ -32,6 +37,7 @@ public class HttpUtils {
 	private SuccessFactorsConfiguration config;
 	private ObjectMapper jsonMapper;
 	private String basicToken;
+	private Runnable tokenRefreshCallback;
 
 	public HttpUtils(CloseableHttpClient client, SuccessFactorsConfiguration config) {
 		this.client = client;
@@ -47,6 +53,60 @@ public class HttpUtils {
 		this.client = client;
 	}
 
+	public void setTokenRefreshCallback(Runnable cb) {
+		this.tokenRefreshCallback = cb;
+	}
+
+	private HttpRequestBase cloneRequest(HttpRequestBase request) {
+		HttpRequestBase newRequest;
+
+		// Crear instancia según el tipo de request original
+		if (request instanceof HttpGet) {
+			newRequest = new HttpGet(request.getURI());
+		} else if (request instanceof HttpPost) {
+			newRequest = new HttpPost(request.getURI());
+		} else if (request instanceof HttpPut) {
+			newRequest = new HttpPut(request.getURI());
+		} else if (request instanceof HttpDelete) {
+			newRequest = new HttpDelete(request.getURI());
+		} else if (request instanceof HttpPatch) {
+			newRequest = new HttpPatch(request.getURI());
+		} else if (request instanceof HttpHead) {
+			newRequest = new HttpHead(request.getURI());
+		} else if (request instanceof HttpOptions) {
+			newRequest = new HttpOptions(request.getURI());
+		} else {
+			throw new UnsupportedOperationException(
+					"cloneRequest() does not support request type: " + request.getClass()
+			);
+		}
+
+		// Copiar headers
+		for (org.apache.http.Header header : request.getAllHeaders()) {
+			if (!header.getName().equalsIgnoreCase("Authorization")) {
+				newRequest.addHeader(header.getName(), header.getValue());
+			}
+		}
+
+		// Copiar entidad si la request original tiene cuerpo
+		if (request instanceof HttpEntityEnclosingRequestBase) {
+			HttpEntityEnclosingRequestBase orig = (HttpEntityEnclosingRequestBase) request;
+			HttpEntityEnclosingRequestBase cloned = (HttpEntityEnclosingRequestBase) newRequest;
+
+			if (orig.getEntity() != null) {
+				try {
+					// Convertir la entidad en bytes y copiarla
+					byte[] bytes = EntityUtils.toByteArray(orig.getEntity());
+					cloned.setEntity(new ByteArrayEntity(bytes));
+				} catch (IOException e) {
+					throw new RuntimeException("Error cloning request entity", e);
+				}
+			}
+		}
+
+		return newRequest;
+	}
+
 	protected JsonNode callRequest(HttpRequestBase request) {
 
 		LOG.ok("Request URI: {0}", request.getURI());
@@ -58,6 +118,37 @@ public class HttpUtils {
 			throw new ConnectorException("Error executing request on " + request.getURI(), e);
 		}
 		LOG.ok("Response: {0}", response.getStatusLine());
+
+		int statusCode = response.getStatusLine().getStatusCode();
+
+		if (statusCode == 403) {
+			try {
+				String body = EntityUtils.toString(response.getEntity());
+				if (body.contains("[LGN0022]") && body.contains("access token has expired")) {
+
+					LOG.info("Se detectó token expirado con error (LGN0022). Refreshing token...");
+
+					if (this.tokenRefreshCallback != null) {
+						this.tokenRefreshCallback.run();
+					} else {
+						LOG.error("tokenRefreshCallback is not set! Cannot refresh token.");
+					}
+
+					closeResponse(response);
+
+					LOG.warn("Se hizo una llamada con un token vencido. Reintentando la llamada con el nuevo token");
+
+					// Se reintenta la request original con nuevo token
+					HttpRequestBase cloned = cloneRequest(request);
+					cloned.removeHeaders("Authorization");
+					cloned.addHeader("Authorization", "Bearer " + SuccessFactorsConnector.accessToken);
+
+					return callRequest(cloned);
+				}
+			} catch (IOException e) {
+				throw new ConnectorException("Error while parsing 403 body.", e);
+			}
+		}
 
 		LOG.ok("Processing response codes");
 		this.processResponseErrors(response);
