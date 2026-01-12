@@ -114,6 +114,9 @@ public class SuccessFactorsConnector extends AbstractRestConnector<SuccessFactor
 	public void init(Configuration configuration) {
 		super.init(configuration);
 		this.httpUtils = new HttpUtils(getHttpClient(), this.getConfiguration());
+		this.httpUtils.setTokenRefreshCallback(() -> {
+			this.getToken();
+		});
 		this.sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 		logger.info("Success Factors rest connector initialized");
 	}
